@@ -346,28 +346,49 @@ using_ff=no
 AC_ARG_WITH([mpmc],
 [AS_HELP_STRING([--with-mpmc=VAL],[select which mpmc system will be used (tbb|ff, default=ff)])],
 [case "${withval}" in
-	tbb) AC_MSG_CHECKING(for TBB)
-				AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
-					#include <tbb/atomic.h>
-					#include <tbb/mutex.h>
-					#include <tbb/concurrent_queue.h>
-					]], [[]])],[have_tbb=yes],[have_tbb=no])
-				if test "$have_tbb" = yes; then
-					 AC_MSG_RESULT(yes)
-					 AC_DEFINE(MPMC_SYSTEM, FIX8_MPMC_TBB, [MPMC system used])
-				else
-					 AC_MSG_RESULT(no)
-					 echo
-					 echo "ERROR: TBB development libraries not found. Install and try again."
-					 echo
-					 exit 1
-				fi
-		 mpmc_set=yes ;;
-	ff) using_ff=yes;;
-	*) echo
-		echo "ERROR: Unknown value ${withval} for MPMC given."
-		echo
-		exit 1
+    tbb)
+        AC_MSG_CHECKING(for TBB via pkg-config)
+        PKG_CHECK_MODULES([TBB], [tbb], [
+            have_tbb=yes
+            AC_MSG_RESULT(yes)
+            AC_DEFINE(MPMC_SYSTEM, FIX8_MPMC_TBB, [MPMC system used])
+            CPPFLAGS="$CPPFLAGS $TBB_CFLAGS"
+            LDFLAGS="$LDFLAGS $TBB_LIBS"
+        ], [
+            AC_MSG_RESULT(no)
+            AC_MSG_CHECKING(for TBB headers and library in standard locations)
+            AC_CHECK_HEADER([tbb/tbb.h], [
+                AC_CHECK_LIB([tbb], [tbb_task_scheduler_init], [
+                    have_tbb=yes
+                    AC_MSG_RESULT(yes)
+                    AC_DEFINE(MPMC_SYSTEM, FIX8_MPMC_TBB, [MPMC system used])
+                    CPPFLAGS="$CPPFLAGS -I/usr/include/tbb"
+                    if test -f /usr/lib/x86_64-linux-gnu/libtbb.so; then
+                        LDFLAGS="$LDFLAGS -L/usr/lib/x86_64-linux-gnu -ltbb"
+                    else
+                        LDFLAGS="$LDFLAGS -L/usr/lib -ltbb"
+                    fi
+                ], [
+                    AC_MSG_RESULT(no)
+                    echo
+                    echo "ERROR: TBB development libraries not found. Install and try again."
+                    echo
+                    exit 1
+                ])
+            ], [
+                AC_MSG_RESULT(no)
+                echo
+                echo "ERROR: TBB headers not found. Install and try again."
+                echo
+                exit 1
+            ])
+        ])
+        mpmc_set=yes ;;
+    ff) using_ff=yes;;
+    *) echo
+        echo "ERROR: Unknown value ${withval} for MPMC given."
+        echo
+        exit 1
 esac])
 
 if test "$mpmc_set" = no; then
@@ -865,4 +886,3 @@ AC_OUTPUT
 
 AC_SUBST(CONFIG_SHELL)
 AM_CONDITIONAL(HAVE_OPENSSL, test "x$openssl" = "xyes")
-
